@@ -1,106 +1,20 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
-
-// Live cPanel API URL
-const String kApiBaseUrl = 'http://cinevorafilms.in/api/index.php';
-
-const kRed = Color(0xFFE50914);
-const kBg = Color(0xFF0B0B0F);
-const kCardBg = Color(0xFF16161F);
-
-// User Session Data Model
-class UserModel {
-  final int id;
-  final String name;
-  final String email;
-  final bool isPremium;
-
-  UserModel({
-    required this.id,
-    required this.name,
-    required this.email,
-    required this.isPremium,
-  });
-
-  factory UserModel.fromJson(Map<String, dynamic> json) {
-    return UserModel(
-      id: json['id'] is int ? json['id'] : int.parse(json['id'].toString()),
-      name: json['name'] ?? '',
-      email: json['email'] ?? '',
-      isPremium: json['is_premium'] == 1 || json['is_premium'] == true,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'email': email,
-    'is_premium': isPremium ? 1 : 0,
-  };
-}
-
-// Movie Data Model
-class Movie {
-  final String id;
-  final String title;
-  final String category;
-  final String year;
-  final String poster;
-  final String banner;
-  final String videoUrl;
-  final String description;
-  final bool isFeatured;
-  final bool isPremium;
-
-  Movie({
-    required this.id,
-    required this.title,
-    required this.category,
-    required this.year,
-    required this.poster,
-    required this.banner,
-    required this.videoUrl,
-    required this.description,
-    required this.isFeatured,
-    required this.isPremium,
-  });
-
-  factory Movie.fromJson(Map<String, dynamic> json) {
-    return Movie(
-      id: json['id'].toString(),
-      title: json['title'] ?? '',
-      category: json['category'] ?? 'General',
-      year: json['year'] ?? '2026',
-      poster: json['poster'] != null && json['poster'].toString().isNotEmpty
-          ? json['poster'].toString()
-          : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=600',
-      banner: json['banner'] != null && json['banner'].toString().isNotEmpty
-          ? json['banner'].toString()
-          : 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=1200',
-      videoUrl: json['video_url'] ?? '',
-      description: json['description'] ?? 'No description provided.',
-      isFeatured: json['is_featured'] == 1 || json['is_featured'] == '1',
-      isPremium: json['is_premium'] == 1 || json['is_premium'] == '1',
-    );
-  }
-}
-
-// Global Runtime State
-class AppState {
-  static UserModel? currentUser;
-  static List<Movie> movies = [];
-  static Movie? featuredMovie;
-  static List<String> categories = [];
-  static Set<String> myList = {};
-  static List<String> watchHistory = [];
-}
+import 'package:video_player/video_player.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   runApp(const CineVoraApp());
 }
 
@@ -112,16 +26,94 @@ class CineVoraApp extends StatelessWidget {
     return MaterialApp(
       title: 'CineVora Films',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: kBg,
-        colorScheme: const ColorScheme.dark(primary: kRed),
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0B0E14),
+        primaryColor: const Color(0xFFE50914),
+        fontFamily: 'Roboto',
       ),
       home: const SplashScreen(),
     );
   }
 }
 
-// 1. SPLASH SCREEN (Auto-checks saved login)
+// ---------------- API SERVICES ----------------
+class ApiService {
+  static const String baseUrl = 'http://cinevorafilms.in/api/index.php';
+
+  static Future> getFeed({int userId = 0}) async {
+    try {
+      final res = await http.get(Uri.parse('$baseUrl?action=get_feed&user_id=$userId'));
+      if (res.statusCode == 200) {
+        return jsonDecode(res.body);
+      }
+    } catch (_) {}
+    return {'status': 'error'};
+  }
+
+  static Future> login(String email, String password) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl?action=login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+      return jsonDecode(res.body);
+    } catch (_) {}
+    return {'status': 'error', 'message': 'Network error'};
+  }
+
+  static Future> signup(String name, String email, String password) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl?action=signup'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'name': name, 'email': email, 'password': password}),
+      );
+      return jsonDecode(res.body);
+    } catch (_) {}
+    return {'status': 'error', 'message': 'Network error'};
+  }
+
+  static Future<void> trackWatch(int movieId, int userId) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl?action=track_watch'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'movie_id': movieId, 'user_id': userId}),
+      );
+    } catch (_) {}
+  }
+
+  static Future<void> trackDownload(int movieId, int userId) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl?action=track_download'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'movie_id': movieId, 'user_id': userId}),
+      );
+    } catch (_) {}
+  }
+
+  static Future> verifyPayment(int userId, int planId, double amount, String txId) async {
+    try {
+      final res = await http.post(
+        Uri.parse('$baseUrl?action=verify_payment'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'plan_id': planId,
+          'amount': amount,
+          'payment_id': txId,
+        }),
+      );
+      return jsonDecode(res.body);
+    } catch (_) {}
+    return {'status': 'error'};
+  }
+}
+
+// ---------------- SPLASH SCREEN ----------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -133,24 +125,18 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkSavedSession();
+    _route();
   }
 
-  Future<void> _checkSavedSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getString('user_session');
-
+  Future<void> _route() async {
     await Future.delayed(const Duration(seconds: 2));
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getInt('uid') ?? 0;
     if (!mounted) return;
-
-    if (savedData != null && savedData.isNotEmpty) {
-      final jsonMap = jsonDecode(savedData);
-      AppState.currentUser = UserModel.fromJson(jsonMap);
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const MainShell()));
+    if (uid > 0) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainNavigationScreen()));
     } else {
-      Navigator.pushReplacement(
-          context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
     }
   }
 
@@ -161,19 +147,12 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('CINEVORA',
-                style: TextStyle(
-                    fontSize: 38,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 4,
-                    color: kRed)),
-            SizedBox(height: 10),
-            Text('FILMS & OTT PLATFORM',
-                style: TextStyle(
-                    fontSize: 12,
-                    letterSpacing: 2,
-                    color: Colors.white54,
-                    fontWeight: FontWeight.bold)),
+            Text(
+              'CINEVORA',
+              style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: Color(0xFFE50914), letterSpacing: 3),
+            ),
+            SizedBox(height: 8),
+            Text('FILMS & ENTERTAINMENT', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.grey)),
           ],
         ),
       ),
@@ -181,7 +160,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// 2. AUTH SCREEN (Strict Real Verification via Database)
+// ---------------- AUTH SCREEN ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -191,63 +170,43 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   bool isLogin = true;
-  bool isLoading = false;
-  final emailController = TextEditingController();
-  final passController = TextEditingController();
-  final nameController = TextEditingController();
+  final nameCtrl = TextEditingController();
+  final emailCtrl = TextEditingController();
+  final passCtrl = TextEditingController();
+  bool loading = false;
 
-  Future<void> submitAuth() async {
-    final email = emailController.text.trim();
-    final pass = passController.text.trim();
-    final name = nameController.text.trim();
-
-    if (email.isEmpty || pass.isEmpty || (!isLogin && name.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sabhi details bharna zaroori hai!')),
-      );
+  Future<void> _handleAuth() async {
+    final email = emailCtrl.text.trim();
+    final pass = passCtrl.text.trim();
+    if (email.isEmpty || pass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Details complete bharein!')));
       return;
     }
+    setState(() => loading = true);
 
-    setState(() => isLoading = true);
+    Map<String, dynamic> res;
+    if (isLogin) {
+      res = await ApiService.login(email, pass);
+    } else {
+      final name = nameCtrl.text.trim();
+      res = await ApiService.signup(name.isEmpty ? 'Viewer' : name, email, pass);
+    }
 
-    try {
-      final targetUrl = '$kApiBaseUrl?action=${isLogin ? "login" : "signup"}';
-      final response = await http.post(
-        Uri.parse(targetUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'name': name,
-          'email': email,
-          'password': pass,
-        }),
-      );
+    setState(() => loading = false);
 
-      final result = jsonDecode(response.body);
+    if (res['status'] == 'success') {
+      final user = res['user'];
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('uid', user['id']);
+      await prefs.setString('name', user['name'] ?? '');
+      await prefs.setString('email', user['email'] ?? '');
+      await prefs.setInt('is_vip', user['is_premium'] ?? 0);
 
-      if (result['status'] == 'success') {
-        final user = UserModel.fromJson(result['user']);
-        AppState.currentUser = user;
-
-        // Save session locally
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('user_session', jsonEncode(user.toJson()));
-
-        if (!mounted) return;
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => const MainShell()));
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Authentication failed')),
-        );
-      }
-    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Server se connect nahi ho paya: $e')),
-      );
-    } finally {
-      if (mounted) setState(() => isLoading = false);
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainNavigationScreen()));
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(res['message'] ?? 'Error occurred')));
     }
   }
 
@@ -255,114 +214,67 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 20),
-              const Center(
-                child: Text('CINEVORA',
-                    style: TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.w900,
-                        color: kRed,
-                        letterSpacing: 3)),
-              ),
-              const SizedBox(height: 40),
-              Text(
-                isLogin ? 'Welcome Back!' : 'Create Account',
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                isLogin
-                    ? 'Apne real account se login karein'
-                    : 'Naya account banayein aur CineVora access karein',
-                style: const TextStyle(color: Colors.white60),
-              ),
-              const SizedBox(height: 30),
-              if (!isLogin) ...[
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('CINEVORA', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Color(0xFFE50914))),
+                const SizedBox(height: 30),
+                if (!isLogin) ...[
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: 'Full Name',
+                      filled: true,
+                      fillColor: const Color(0xFF141A26),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 TextField(
-                  controller: nameController,
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.person_outline),
-                    hintText: 'Aapka Pura Naam',
+                    labelText: 'Email Address',
                     filled: true,
-                    fillColor: kCardBg,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none),
+                    fillColor: const Color(0xFF141A26),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: passCtrl,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    filled: true,
+                    fillColor: const Color(0xFF141A26),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE50914),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: loading ? null : _handleAuth,
+                    child: loading ? const CircularProgressIndicator(color: Colors.white) : Text(isLogin ? 'Sign In' : 'Create Account'),
                   ),
                 ),
                 const SizedBox(height: 16),
+                TextButton(
+                  onPressed: () => setState(() => isLogin = !isLogin),
+                  child: Text(isLogin ? 'New user? Register now' : 'Existing user? Login here'),
+                ),
               ],
-              TextField(
-                controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  hintText: 'Email Address',
-                  filled: true,
-                  fillColor: kCardBg,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  hintText: 'Password',
-                  filled: true,
-                  fillColor: kCardBg,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: isLoading ? null : submitAuth,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kRed,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: isLoading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2))
-                    : Text(
-                        isLogin ? 'Log In' : 'Sign Up',
-                        style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white),
-                      ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(isLogin ? "Account nahi hai? " : "Pehle se account hai? "),
-                  GestureDetector(
-                    onTap: () => setState(() => isLogin = !isLogin),
-                    child: Text(
-                      isLogin ? 'Sign Up' : 'Log In',
-                      style: const TextStyle(
-                          color: kRed, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -370,432 +282,243 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// 3. MAIN SHELL (App Container)
-class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+// ---------------- MAIN BOTTOM NAV ----------------
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({super.key});
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
 }
 
-class _MainShellState extends State<MainShell> {
-  int index = 0;
-  bool isFeedLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchFeed();
-  }
-
-  Future<void> _fetchFeed() async {
-    try {
-      final res = await http.get(Uri.parse('$kApiBaseUrl?action=get_feed'));
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body);
-        if (data['status'] == 'success') {
-          final List trendingRaw = data['trending'] ?? [];
-          final List catsRaw = data['categories'] ?? [];
-
-          AppState.movies = trendingRaw.map((e) => Movie.fromJson(e)).toList();
-          if (data['featured'] != null) {
-            AppState.featuredMovie = Movie.fromJson(data['featured']);
-          } else if (AppState.movies.isNotEmpty) {
-            AppState.featuredMovie = AppState.movies.first;
-          }
-          AppState.categories = catsRaw.map((e) => e['name'].toString()).toList();
-        }
-      }
-    } catch (_) {}
-    if (mounted) setState(() => isFeedLoading = false);
-  }
-
-  Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('user_session');
-    AppState.currentUser = null;
-    if (!mounted) return;
-    Navigator.pushReplacement(
-        context, MaterialPageRoute(builder: (_) => const AuthScreen()));
-  }
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _currentIndex = 0;
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const SeriesScreen(),
+    const TeasersScreen(),
+    const VipScreen(),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    if (isFeedLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: kRed)),
-      );
-    }
-
-    final pages = [
-      const HomeTab(),
-      const SearchTab(),
-      const CategoriesTab(),
-      AccountTab(onLogout: _logout),
-    ];
-
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text('CINEVORA',
-            style: TextStyle(
-                color: kRed, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-      ),
-      body: IndexedStack(index: index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        backgroundColor: const Color(0xFF111116),
-        indicatorColor: kRed.withOpacity(0.2),
-        onDestinationSelected: (i) => setState(() => index = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home, color: kRed),
-              label: 'Home'),
-          NavigationDestination(
-              icon: Icon(Icons.search),
-              selectedIcon: Icon(Icons.search, color: kRed),
-              label: 'Search'),
-          NavigationDestination(
-              icon: Icon(Icons.grid_view_outlined),
-              selectedIcon: Icon(Icons.grid_view, color: kRed),
-              label: 'Categories'),
-          NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person, color: kRed),
-              label: 'Account'),
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+        backgroundColor: const Color(0xFF0F131C),
+        selectedItemColor: const Color(0xFFE50914),
+        unselectedItemColor: Colors.grey,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_filled), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.video_collection), label: 'Series'),
+          BottomNavigationBarItem(icon: Icon(Icons.notifications_active), label: 'Teasers'),
+          BottomNavigationBarItem(icon: Icon(Icons.workspace_premium), label: 'VIP Pass'),
         ],
       ),
     );
   }
 }
 
-// 4. POSTER CARD
-class PosterCard extends StatelessWidget {
-  final Movie movie;
-  final double width, height;
-  const PosterCard({
-    super.key,
-    required this.movie,
-    this.width = 110,
-    this.height = 160,
-  });
+// ---------------- HOME SCREEN ----------------
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  Map<String, dynamic> data = {};
+  bool loading = true;
+  int userId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFeed();
+  }
+
+  Future<void> _loadFeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    userId = prefs.getInt('uid') ?? 0;
+    final res = await ApiService.getFeed(userId: userId);
+    if (mounted) {
+      setState(() {
+        data = res;
+        loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-          context, MaterialPageRoute(builder: (_) => MovieDetail(movie: movie))),
-      child: Container(
-        width: width,
-        height: height,
-        margin: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: kCardBg,
-          image: DecorationImage(
-            image: NetworkImage(movie.poster),
-            fit: BoxFit.cover,
-          ),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [Colors.transparent, Colors.black87],
-            ),
-          ),
-          padding: const EdgeInsets.all(8),
-          alignment: Alignment.bottomLeft,
+    if (loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: Color(0xFFE50914))));
+    }
+
+    final featured = data['featured'];
+    final trending = (data['trending'] as List?) ?? [];
+    final bhojpuri = (data['bhojpuri'] as List?) ?? [];
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F131C),
+        elevation: 0,
+        title: const Text('CINEVORA', style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFE50914), letterSpacing: 2)),
+        actions: [
+          IconButton(icon: const Icon(Icons.search), onPressed: () {}),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadFeed,
+        child: SingleChildScrollView(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (movie.isPremium)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  margin: const EdgeInsets.only(bottom: 4),
-                  decoration: BoxDecoration(
-                      color: Colors.amber, borderRadius: BorderRadius.circular(4)),
-                  child: const Text('VIP',
-                      style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black)),
+              // Hero Featured Banner
+              if (featured != null)
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(movie: featured, userId: userId))),
+                  child: Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: featured['poster'] ?? '',
+                        height: 380,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Container(height: 380, color: Colors.grey[900]),
+                      ),
+                      Container(
+                        height: 380,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.transparent, const Color(0xFF0B0E14).withOpacity(0.95)],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(featured['title'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
+                                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(movie: featured, userId: userId))),
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Watch Now'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
                 ),
-              Text(
-                movie.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              ),
+
+              // Bhojpuri Hits Section
+              if (bhojpuri.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+                  child: Text('🔥 Bhojpuri Blockbusters', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                SizedBox(
+                  height: 190,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: bhojpuri.length,
+                    itemBuilder: (context, i) => _buildCard(bhojpuri[i]),
+                  ),
+                ),
+              ],
+
+              // Trending Movies
+              if (trending.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+                  child: Text('🎬 Trending Movies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ),
+                SizedBox(
+                  height: 190,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemCount: trending.length,
+                    itemBuilder: (context, i) => _buildCard(trending[i]),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 30),
             ],
           ),
         ),
       ),
     );
   }
-}
 
-// 5. HOME TAB
-class HomeTab extends StatelessWidget {
-  const HomeTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final feat = AppState.featuredMovie;
-
-    return ListView(
-      children: [
-        if (feat != null)
-          GestureDetector(
-            onTap: () => Navigator.push(
-                context, MaterialPageRoute(builder: (_) => MovieDetail(movie: feat))),
-            child: Container(
-              height: 230,
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                color: kCardBg,
-                image: DecorationImage(
-                  image: NetworkImage(feat.banner),
-                  fit: BoxFit.cover,
-                ),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Colors.black]),
-                ),
-                alignment: Alignment.bottomLeft,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                          color: kRed, borderRadius: BorderRadius.circular(6)),
-                      child: const Text('FEATURED NOW',
-                          style: TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(feat.title,
-                        style: const TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.w900)),
-                    Text('${feat.category} • ${feat.year}',
-                        style: const TextStyle(color: Colors.white70)),
-                  ],
-                ),
+  Widget _buildCard(Map<String, dynamic> item) {
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerScreen(movie: item, userId: userId))),
+      child: Container(
+        width: 125,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: CachedNetworkImage(
+                imageUrl: item['poster'] ?? '',
+                height: 155,
+                width: 125,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => Container(height: 155, color: Colors.grey[900]),
               ),
             ),
-          ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: const Text('Latest Movies & Series',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(item['title'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
         ),
-        SizedBox(
-          height: 160,
-          child: AppState.movies.isEmpty
-              ? const Center(child: Text('Abhi koi movie upload nahi hui hai.'))
-              : ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(left: 16),
-                  itemCount: AppState.movies.length,
-                  itemBuilder: (_, i) => PosterCard(movie: AppState.movies[i]),
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-// 6. SEARCH TAB
-class SearchTab extends StatefulWidget {
-  const SearchTab({super.key});
-
-  @override
-  State<SearchTab> createState() => _SearchTabState();
-}
-
-class _SearchTabState extends State<SearchTab> {
-  String q = '';
-
-  @override
-  Widget build(BuildContext context) {
-    final results = AppState.movies
-        .where((m) =>
-            m.title.toLowerCase().contains(q.toLowerCase()) ||
-            m.category.toLowerCase().contains(q.toLowerCase()))
-        .toList();
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: TextField(
-            onChanged: (v) => setState(() => q = v),
-            decoration: InputDecoration(
-              hintText: 'Search movies, series...',
-              prefixIcon: const Icon(Icons.search),
-              filled: true,
-              fillColor: kCardBg,
-              border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none),
-            ),
-          ),
-        ),
-        Expanded(
-          child: results.isEmpty
-              ? const Center(child: Text('Kuch nahi mila'))
-              : ListView.builder(
-                  itemCount: results.length,
-                  itemBuilder: (_, i) {
-                    final m = results[i];
-                    return ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(m.poster,
-                            width: 50, height: 70, fit: BoxFit.cover),
-                      ),
-                      title: Text(m.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('${m.category} • ${m.year}'),
-                      trailing: const Icon(Icons.play_circle_outline, color: kRed),
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => MovieDetail(movie: m))),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-// 7. CATEGORIES TAB
-class CategoriesTab extends StatelessWidget {
-  const CategoriesTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: AppState.categories.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 12,
-        crossAxisSpacing: 12,
-        childAspectRatio: 2.2,
       ),
-      itemBuilder: (_, i) {
-        final cat = AppState.categories[i];
-        return GestureDetector(
-          onTap: () {
-            final filtered = AppState.movies
-                .where((m) => m.category.toLowerCase() == cat.toLowerCase())
-                .toList();
-
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => Scaffold(
-                  appBar: AppBar(title: Text(cat)),
-                  body: filtered.isEmpty
-                      ? Center(child: Text('$cat me abhi koi content nahi hai.'))
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: filtered.length,
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            mainAxisSpacing: 12,
-                            crossAxisSpacing: 12,
-                            childAspectRatio: 0.65,
-                          ),
-                          itemBuilder: (_, j) => PosterCard(
-                              movie: filtered[j],
-                              width: double.infinity,
-                              height: double.infinity),
-                        ),
-                ),
-              ),
-            );
-          },
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: kCardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white10),
-            ),
-            child: Text(cat,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-        );
-      },
     );
   }
 }
 
-// 8. MOVIE DETAIL & VIDEO STREAM PLAYER
-class MovieDetail extends StatefulWidget {
-  final Movie movie;
-  const MovieDetail({super.key, required this.movie});
+// ---------------- VIDEO PLAYER SCREEN ----------------
+class PlayerScreen extends StatefulWidget {
+  final Map<String, dynamic> movie;
+  final int userId;
+  const PlayerScreen({super.key, required this.movie, required this.userId});
 
   @override
-  State<MovieDetail> createState() => _MovieDetailState();
+  State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
-class _MovieDetailState extends State<MovieDetail> {
+class _PlayerScreenState extends State<PlayerScreen> {
   late VideoPlayerController _videoController;
   ChewieController? _chewieController;
-  bool isLocked = false;
+  bool isInit = false;
 
   @override
   void initState() {
     super.initState();
-    // Check VIP permission
-    if (widget.movie.isPremium && (AppState.currentUser?.isPremium != true)) {
-      isLocked = true;
-    } else {
-      _initPlayer();
-      _trackWatch();
-    }
+    _initVideo();
+    ApiService.trackWatch(int.tryParse(widget.movie['id'].toString()) ?? 0, widget.userId);
   }
 
-  void _trackWatch() {
-    if (AppState.currentUser != null) {
-      http.post(
-        Uri.parse('$kApiBaseUrl?action=track_watch'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': AppState.currentUser!.id,
-          'movie_id': widget.movie.id,
-        }),
-      );
-      if (!AppState.watchHistory.contains(widget.movie.title)) {
-        AppState.watchHistory.add(widget.movie.title);
-      }
-    }
-  }
-
-  Future<void> _initPlayer() async {
-    _videoController =
-        VideoPlayerController.networkUrl(Uri.parse(widget.movie.videoUrl));
+  Future<void> _initVideo() async {
+    final url = widget.movie['video_url'] ?? '';
+    _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
     await _videoController.initialize();
     _chewieController = ChewieController(
       videoPlayerController: _videoController,
@@ -803,211 +526,292 @@ class _MovieDetailState extends State<MovieDetail> {
       looping: false,
       aspectRatio: _videoController.value.aspectRatio,
       materialProgressColors: ChewieProgressColors(
-        playedColor: kRed,
-        handleColor: kRed,
-        backgroundColor: Colors.grey,
-        bufferedColor: Colors.white24,
+        playedColor: const Color(0xFFE50914),
+        handleColor: const Color(0xFFE50914),
       ),
     );
-    if (mounted) setState(() {});
+    setState(() => isInit = true);
   }
 
   @override
   void dispose() {
-    if (!isLocked) {
-      _videoController.dispose();
-      _chewieController?.dispose();
-    }
+    _videoController.dispose();
+    _chewieController?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isSaved = AppState.myList.contains(widget.movie.id);
-
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-      body: ListView(
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 240,
+            height: 220,
             color: Colors.black,
-            child: isLocked
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.lock, size: 50, color: Colors.amber),
-                        const SizedBox(height: 10),
-                        const Text('Yeh Content VIP Members ke liye hai!',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        ElevatedButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text(
-                                      'Account me jakar Subscription Upgrade karein.')),
-                            );
-                          },
-                          style:
-                              ElevatedButton.styleFrom(backgroundColor: kRed),
-                          child: const Text('Upgrade Plan'),
-                        ),
-                      ],
-                    ),
-                  )
-                : (_chewieController != null &&
-                        _chewieController!
-                            .videoPlayerController.value.isInitialized
-                    ? Chewie(controller: _chewieController!)
-                    : const Center(
-                        child: CircularProgressIndicator(color: kRed))),
+            child: isInit && _chewieController != null
+                ? Chewie(controller: _chewieController!)
+                : const Center(child: CircularProgressIndicator(color: Color(0xFFE50914))),
           ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.movie.title,
-                    style: const TextStyle(
-                        fontSize: 26, fontWeight: FontWeight.w900)),
+                Text(widget.movie['title'] ?? '', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
-                Text('${widget.movie.year} • ${widget.movie.category} • HD',
-                    style: const TextStyle(color: Colors.white60)),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            if (isSaved) {
-                              AppState.myList.remove(widget.movie.id);
-                            } else {
-                              AppState.myList.add(widget.movie.id);
-                            }
-                          });
-                        },
-                        icon: Icon(isSaved ? Icons.check : Icons.add,
-                            color: isSaved ? Colors.green : Colors.white),
-                        label: Text(isSaved ? 'In My List' : 'My List'),
-                      ),
-                    ),
-                  ],
+                Text(
+                  '${widget.movie['year'] ?? '2026'} • ${widget.movie['duration'] ?? '2h'} • ${widget.movie['category'] ?? 'Cinema'}',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
-                const SizedBox(height: 20),
-                const Text('Storyline',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(widget.movie.description,
-                    style: const TextStyle(
-                        color: Colors.white70, height: 1.5, fontSize: 14)),
+                const SizedBox(height: 14),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1B2230)),
+                  onPressed: () {
+                    ApiService.trackDownload(int.tryParse(widget.movie['id'].toString()) ?? 0, widget.userId);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading started...')));
+                  },
+                  icon: const Icon(Icons.download),
+                  label: const Text('Download Movie'),
+                ),
+                const SizedBox(height: 14),
+                Text(widget.movie['description'] ?? 'No synopsis available.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
-          ),
+          )
         ],
       ),
     );
   }
 }
 
-// 9. ACCOUNT TAB
-class AccountTab extends StatelessWidget {
-  final VoidCallback onLogout;
-  const AccountTab({super.key, required this.onLogout});
+// ---------------- SERIES SCREEN ----------------
+class SeriesScreen extends StatefulWidget {
+  const SeriesScreen({super.key});
+
+  @override
+  State<SeriesScreen> createState() => _SeriesScreenState();
+}
+
+class _SeriesScreenState extends State<SeriesScreen> {
+  List series = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final res = await ApiService.getFeed();
+    if (mounted) {
+      setState(() {
+        series = res['series'] ?? [];
+        loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final user = AppState.currentUser;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Web Series & Originals'), backgroundColor: const Color(0xFF0F131C)),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: series.length,
+              itemBuilder: (context, i) {
+                final s = series[i];
+                return Card(
+                  color: const Color(0xFF121620),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(imageUrl: s['thumbnail'] ?? '', width: 50, height: 70, fit: BoxFit.cover),
+                    ),
+                    title: Text(s['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('${s['seasons_count'] ?? 1} Seasons', style: const TextStyle(color: Colors.amber, fontSize: 12)),
+                  ),
+                );
+              },
+            ),
+    );
+  }
+}
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: kRed,
-              child: Text(
-                user != null && user.name.isNotEmpty
-                    ? user.name[0].toUpperCase()
-                    : 'U',
-                style: const TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
-              ),
+// ---------------- TEASERS & ANNOUNCEMENTS ----------------
+class TeasersScreen extends StatefulWidget {
+  const TeasersScreen({super.key});
+
+  @override
+  State<TeasersScreen> createState() => _TeasersScreenState();
+}
+
+class _TeasersScreenState extends State<TeasersScreen> {
+  List teast = [];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final res = await ApiService.getFeed();
+    if (mounted) {
+      setState(() {
+        teast = res['announcements'] ?? [];
+        loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Coming Soon & Teasers'), backgroundColor: const Color(0xFF0F131C)),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: teast.length,
+              itemBuilder: (context, i) {
+                final t = teast[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(color: const Color(0xFF121620), borderRadius: BorderRadius.circular(14)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                        child: CachedNetworkImage(imageUrl: t['thumbnail'] ?? '', height: 180, width: double.infinity, fit: BoxFit.cover),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(t['title'] ?? '', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text('${t['tag']} • ${t['release_date']}', style: const TextStyle(color: Color(0xFFE50914), fontSize: 12, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      )
+                    ],
+                  ),
+                );
+              },
             ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(user?.name ?? 'User',
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold)),
-                Text(user?.email ?? '',
-                    style: const TextStyle(color: Colors.white60)),
-              ],
+    );
+  }
+}
+
+// ---------------- VIP SUBSCRIPTION (AUTO-UPI PAYMENT) ----------------
+class VipScreen extends StatefulWidget {
+  const VipScreen({super.key});
+
+  @override
+  State<VipScreen> createState() => _VipScreenState();
+}
+
+class _VipScreenState extends State<VipScreen> {
+  List plans = [];
+  String upiId = 'cinevora@upi';
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final res = await ApiService.getFeed();
+    if (mounted) {
+      setState(() {
+        plans = res['subscription_plans'] ?? [];
+        upiId = res['payment_gateways']?['upi_id'] ?? 'cinevora@upi';
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> _triggerUpiAndActivate(Map<String, dynamic> plan) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uid = prefs.getInt('uid') ?? 0;
+    final price = double.tryParse(plan['price'].toString()) ?? 199.0;
+    final planId = int.tryParse(plan['id'].toString()) ?? 1;
+
+    // Direct UPI Intent URL
+    final upiUrl = 'upi://pay?pa=$upiId&pn=CineVoraFilms&am=$price&cu=INR&tn=VIP_Pass';
+    if (await canLaunchUrl(Uri.parse(upiUrl))) {
+      await launchUrl(Uri.parse(upiUrl));
+    }
+
+    // Auto verify & Instant Background Activation
+    final txId = 'UPI_TXN_${DateTime.now().millisecondsSinceEpoch}';
+    final actRes = await ApiService.verifyPayment(uid, planId, price, txId);
+
+    if (actRes['status'] == 'success') {
+      await prefs.setInt('is_vip', 1);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 VIP Subscription Automatically Activated!')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('CineVora VIP Pass'), backgroundColor: const Color(0xFF0F131C)),
+      body: loading
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: plans.length,
+              itemBuilder: (context, i) {
+                final p = plans[i];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF121620),
+                    border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.between,
+                        children: [
+                          Text(p['plan_name'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.amber)),
+                          Text('₹${p['price']}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('${p['duration_days']} Days Validity • ${p['quality']} • ${p['device_limit']} Devices', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
+                          onPressed: () => _triggerUpiAndActivate(p),
+                          child: const Text('Subscribe & Pay via UPI', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      )
+                    ],
+                  ),
+                );
+              },
             ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            color: kCardBg,
-            border: Border.all(
-                color: user?.isPremium == true ? Colors.amber : Colors.white12),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                user?.isPremium == true ? '⭐ VIP Member (Active)' : 'Free Plan',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: user?.isPremium == true
-                        ? Colors.amber
-                        : Colors.white70),
-              ),
-              if (user?.isPremium != true)
-                ElevatedButton(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text(
-                              'Admin panel se apna VIP status active karwayein.')),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: kRed),
-                  child: const Text('Upgrade'),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        ListTile(
-          leading: const Icon(Icons.history),
-          title: const Text('Watch History'),
-          trailing: Text('${AppState.watchHistory.length} watched',
-              style: const TextStyle(color: Colors.white54)),
-        ),
-        ListTile(
-          leading: const Icon(Icons.bookmark_border),
-          title: const Text('My List'),
-          trailing: Text('${AppState.myList.length} saved',
-              style: const TextStyle(color: Colors.white54)),
-        ),
-        ListTile(
-          leading: const Icon(Icons.logout, color: Colors.redAccent),
-          title: const Text('Logout', style: TextStyle(color: Colors.redAccent)),
-          onTap: onLogout,
-        ),
-      ],
     );
   }
 }
