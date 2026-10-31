@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -42,7 +41,7 @@ class CineVoraMasterApp extends StatelessWidget {
   }
 }
 
-// ================= API REPOSITORY =================
+// ================= API SERVICE =================
 class ApiService {
   static Future> fetchFeed(int userId) async {
     try {
@@ -380,7 +379,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 }
 
-// ================= MAIN NAVIGATION SHELL =================
+// ================= MAIN SHELL =================
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
 
@@ -421,7 +420,7 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-// ================= HOME SCREEN (COMPLETE FEED) =================
+// ================= HOME SCREEN =================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -483,7 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // 1. Hero Featured Banner
               if (featured != null)
                 GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerDetailScreen(movie: featured, uid: uid))),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: featured, uid: uid))),
                   child: Stack(
                     alignment: Alignment.bottomLeft,
                     children: [
@@ -515,7 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             const SizedBox(height: 10),
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(backgroundColor: kRed),
-                              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerDetailScreen(movie: featured, uid: uid))),
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: featured, uid: uid))),
                               icon: const Icon(Icons.play_arrow),
                               label: const Text('Play Movie'),
                             ),
@@ -586,7 +585,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildCard(Map<String, dynamic> item) {
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerDetailScreen(movie: item, uid: uid))),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: item, uid: uid))),
       child: Container(
         width: 125,
         margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -636,94 +635,71 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ================= VIDEO PLAYER SCREEN =================
-class PlayerDetailScreen extends StatefulWidget {
+// ================= MOVIE DETAIL & STREAMING =================
+class MovieDetailScreen extends StatelessWidget {
   final Map<String, dynamic> movie;
   final int uid;
-  const PlayerDetailScreen({super.key, required this.movie, required this.uid});
-
-  @override
-  State<PlayerDetailScreen> createState() => _PlayerDetailScreenState();
-}
-
-class _PlayerDetailScreenState extends State<PlayerDetailScreen> {
-  late VideoPlayerController _controller;
-  bool isReady = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final url = widget.movie['video_url'] ?? '';
-    _controller = VideoPlayerController.networkUrl(Uri.parse(url))
-      ..initialize().then((_) {
-        setState(() => isReady = true);
-        _controller.play();
-      });
-    ApiService.trackWatch(int.tryParse(widget.movie['id'].toString()) ?? 0, widget.uid);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const MovieDetailScreen({super.key, required this.movie, required this.uid});
 
   @override
   Widget build(BuildContext context) {
-    final mid = int.tryParse(widget.movie['id'].toString()) ?? 0;
+    final vUrl = movie['video_url'] ?? '';
+    final mid = int.tryParse(movie['id'].toString()) ?? 0;
 
     return Scaffold(
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 230,
-            color: Colors.black,
-            child: isReady
-                ? Stack(
-                    alignment: Alignment.center,
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CachedNetworkImage(
+              imageUrl: movie['poster'] ?? '',
+              height: 250,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorWidget: (_, __, ___) => Container(height: 250, color: Colors.grey[900]),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(movie['title'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text('${movie['year'] ?? '2026'} • ${movie['duration'] ?? '2h'} • ${movie['category'] ?? 'Cinema'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                  const SizedBox(height: 18),
+                  Row(
                     children: [
-                      AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
-                      GestureDetector(
-                        onTap: () => setState(() => _controller.value.isPlaying ? _controller.pause() : _controller.play()),
-                        child: CircleAvatar(
-                          backgroundColor: Colors.black45,
-                          radius: 28,
-                          child: Icon(_controller.value.isPlaying ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.white),
-                        ),
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(backgroundColor: kRed),
+                        onPressed: () async {
+                          ApiService.trackWatch(mid, uid);
+                          final uri = Uri.parse(vUrl);
+                          if (await canLaunchUrl(uri)) {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          }
+                        },
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text('Stream Online'),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          ApiService.trackDownload(mid, uid);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading started...')));
+                        },
+                        icon: const Icon(Icons.download),
+                        label: const Text('Download'),
                       ),
                     ],
-                  )
-                : const Center(child: CircularProgressIndicator(color: kRed)),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.movie['title'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 6),
-                Text(
-                  '${widget.movie['year'] ?? '2026'} • ${widget.movie['duration'] ?? '2h'} • ${widget.movie['category'] ?? 'Cinema'}',
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(backgroundColor: kCardBg),
-                  onPressed: () {
-                    ApiService.trackDownload(mid, widget.uid);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading started in background...')));
-                  },
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download Movie'),
-                ),
-                const SizedBox(height: 16),
-                Text(widget.movie['description'] ?? 'No storyline details.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
-              ],
-            ),
-          )
-        ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(movie['description'] ?? 'No storyline details.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                ],
+              ),
+            )
+          ],
+        ),
       ),
     );
   }
@@ -765,7 +741,7 @@ class _VipPlansScreenState extends State<VipPlansScreen> {
     final price = double.tryParse(plan['price'].toString()) ?? 199.0;
     final planId = int.tryParse(plan['id'].toString()) ?? 1;
 
-    // Standard Universal UPI Intent URI: launches Google Pay, PhonePe, Paytm automatically
+    // Direct Universal UPI Intent (GPay, PhonePe, Paytm selector)
     final upiUri = Uri.parse('upi://pay?pa=$upiId&pn=CineVoraFilms&am=$price&cu=INR&tn=VIP_Plan_$planId');
 
     try {
@@ -774,7 +750,7 @@ class _VipPlansScreenState extends State<VipPlansScreen> {
       }
     } catch (_) {}
 
-    // Instant Backend Auto-Verification (Sets is_premium = 1 in database automatically)
+    // Instant Backend Auto-Verification in MySQL Database
     final txId = 'UPI_INTENT_${DateTime.now().millisecondsSinceEpoch}';
     final actRes = await ApiService.verifyPayment(uid, planId, price, txId);
 
@@ -1010,7 +986,7 @@ class _SearchCatalogScreenState extends State<SearchCatalogScreen> {
             ),
             title: Text(m['title'] ?? ''),
             subtitle: Text(m['category'] ?? 'General'),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PlayerDetailScreen(movie: m, uid: widget.uid))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: m, uid: widget.uid))),
           );
         },
       ),
@@ -1018,7 +994,7 @@ class _SearchCatalogScreenState extends State<SearchCatalogScreen> {
   }
 }
 
-// ================= ACCOUNT SCREEN =================
+// ================= ACCOUNT PROFILE SCREEN =================
 class AccountProfileScreen extends StatefulWidget {
   const AccountProfileScreen({super.key});
 
@@ -1054,7 +1030,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            CircleAvatar(radius: 40, backgroundColor: kCardBg, child: const Icon(Icons.person, size: 50, color: kRed)),
+            const CircleAvatar(radius: 40, backgroundColor: kCardBg, child: Icon(Icons.person, size: 50, color: kRed)),
             const SizedBox(height: 12),
             Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Text(email, style: const TextStyle(color: Colors.white54, fontSize: 13)),
