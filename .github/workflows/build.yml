@@ -15,13 +15,14 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-      - run: flutter create --platforms=android --org com.cinevora --project-name films .
-      - run: git checkout -- lib pubspec.yaml
-      - run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><application#' android/app/src/main/AndroidManifest.xml
-      - run: sed -i 's#android:label="films"#android:label="CineVora Films"#' android/app/src/main/AndroidManifest.xml
-      - run: flutter pub get
-      - run: flutter build apk --release --no-tree-shake-icons
+      - run: |
+          rm -rf android
+          flutter create --platforms=android --org com.cinevora --project-name films .
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><application#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#android:label="films"#android:label="CineVora Films"#' android/app/src/main/AndroidManifest.xml
+          flutter pub get
+          flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
           name: cinevora-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
