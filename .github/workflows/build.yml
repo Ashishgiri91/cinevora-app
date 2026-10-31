@@ -13,29 +13,29 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Java JDK
-        uses: actions/setup-java@v3
+      - name: Set up Java JDK
+        uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
           channel: 'stable'
           cache: false
 
-      - name: Auto Generate Android Structure
+      - name: Recreate Clean Android Structure
         run: |
+          rm -rf android
           flutter create --platforms=android --org in.cinevorafilms .
           flutter pub get
 
-      - name: Build Installable APK
-        run: flutter build apk --debug
+      - name: Build Android APK
+        run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CineVora-App
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: CineVora-Release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
