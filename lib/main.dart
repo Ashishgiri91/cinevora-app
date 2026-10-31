@@ -28,14 +28,13 @@ class CineVoraApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF07090E),
         primaryColor: const Color(0xFFE50914),
-        fontFamily: 'sans-serif',
       ),
       home: const SplashScreen(),
     );
   }
 }
 
-// ---------------- API SERVICES ----------------
+// ================= API SERVICE =================
 class ApiService {
   static const String baseUrl = 'http://cinevorafilms.in/api/index.php';
 
@@ -60,7 +59,7 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
       return jsonDecode(res.body);
     } catch (_) {}
-    return {'status': 'error', 'message': 'Server connect nahi hua!'};
+    return {'status': 'error', 'message': 'Network connection error'};
   }
 
   static Future> signup(String name, String email, String password) async {
@@ -72,7 +71,7 @@ class ApiService {
       ).timeout(const Duration(seconds: 10));
       return jsonDecode(res.body);
     } catch (_) {}
-    return {'status': 'error', 'message': 'Signup fail hua!'};
+    return {'status': 'error', 'message': 'Signup error'};
   }
 
   static Future<void> trackWatch(int movieId, int userId) async {
@@ -113,7 +112,7 @@ class ApiService {
   }
 }
 
-// ---------------- SPLASH SCREEN ----------------
+// ================= SPLASH =================
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -125,10 +124,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _init();
+    _start();
   }
 
-  Future<void> _init() async {
+  Future<void> _start() async {
     await Future.delayed(const Duration(seconds: 2));
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getInt('uid') ?? 0;
@@ -148,8 +147,8 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('CINEVORA', style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Color(0xFFE50914), letterSpacing: 3)),
-            SizedBox(height: 8),
-            Text('ORIGINAL FILMS & WEB SERIES', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.grey)),
+            SizedBox(height: 6),
+            Text('OTT STREAMING PLATFORM', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.grey)),
           ],
         ),
       ),
@@ -157,7 +156,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// ---------------- AUTH SCREEN ----------------
+// ================= AUTH (LOGIN / SIGNUP) =================
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -219,7 +218,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: InputDecoration(
                     labelText: 'Full Name',
                     filled: true,
-                    fillColor: const Color(0xFF121620),
+                    fillColor: const Color(0xFF141721),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -231,7 +230,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: InputDecoration(
                   labelText: 'Email Address',
                   filled: true,
-                  fillColor: const Color(0xFF121620),
+                  fillColor: const Color(0xFF141721),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -242,7 +241,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: InputDecoration(
                   labelText: 'Password',
                   filled: true,
-                  fillColor: const Color(0xFF121620),
+                  fillColor: const Color(0xFF141721),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -271,7 +270,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// ---------------- MAIN BOTTOM TABS ----------------
+// ================= BOTTOM NAVIGATION =================
 class MainTabsScreen extends StatefulWidget {
   const MainTabsScreen({super.key});
 
@@ -310,7 +309,7 @@ class _MainTabsScreenState extends State<MainTabsScreen> {
   }
 }
 
-// ---------------- HOME SCREEN ----------------
+// ================= HOME SCREEN =================
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -375,7 +374,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Hero Banner
+              // Hero Featured Banner
               if (featured != null)
                 GestureDetector(
                   onTap: () => _openMovie(featured),
@@ -419,7 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-              // Bhojpuri Section
+              // Bhojpuri Blockbusters Section
               if (bhojpuri.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
@@ -436,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
 
-              // Trending Section
+              // Trending Movies Section
               if (trending.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
@@ -499,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ---------------- MOVIE DETAIL & NATIVE STREAM ----------------
+// ================= MOVIE DETAIL =================
 class MovieDetailScreen extends StatelessWidget {
   final Map<String, dynamic> movie;
   final int userId;
@@ -568,7 +567,7 @@ class MovieDetailScreen extends StatelessWidget {
   }
 }
 
-// ---------------- SERIES SCREEN ----------------
+// ================= SERIES SCREEN =================
 class SeriesScreen extends StatefulWidget {
   const SeriesScreen({super.key});
 
@@ -603,14 +602,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : series.isEmpty
-              ? const Center(child: Text('Abhi koi web series add nahi hui.', style: TextStyle(color: Colors.grey)))
+              ? const Center(child: Text('Abhi koi web series upload nahi hui.', style: TextStyle(color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: series.length,
                   itemBuilder: (context, i) {
                     final s = series[i];
                     return Card(
-                      color: const Color(0xFF121620),
+                      color: const Color(0xFF141721),
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
@@ -628,7 +627,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
   }
 }
 
-// ---------------- TEASERS SCREEN ----------------
+// ================= TEASERS SCREEN =================
 class TeasersScreen extends StatefulWidget {
   const TeasersScreen({super.key});
 
@@ -671,7 +670,7 @@ class _TeasersScreenState extends State<TeasersScreen> {
                     final t = teast[i];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(color: const Color(0xFF121620), borderRadius: BorderRadius.circular(14)),
+                      decoration: BoxDecoration(color: const Color(0xFF141721), borderRadius: BorderRadius.circular(14)),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -699,7 +698,7 @@ class _TeasersScreenState extends State<TeasersScreen> {
   }
 }
 
-// ---------------- VIP PASS SCREEN ----------------
+// ================= VIP SCREEN =================
 class VipScreen extends StatefulWidget {
   const VipScreen({super.key});
 
@@ -765,7 +764,7 @@ class _VipScreenState extends State<VipScreen> {
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF121620),
+                    color: const Color(0xFF141721),
                     border: Border.all(color: Colors.amber.withOpacity(0.5)),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -780,7 +779,7 @@ class _VipScreenState extends State<VipScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text('${p['duration_days']} Days Validity • ${p['quality']} • ${p['device_limit']} Screens', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('${p['duration_days']} Days • ${p['quality']} • ${p['device_limit']} Screens', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
