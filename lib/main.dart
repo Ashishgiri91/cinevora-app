@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,11 @@ import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
   runApp(const CineVoraApp());
 }
 
@@ -20,21 +26,24 @@ class CineVoraApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF090A0F),
+        scaffoldBackgroundColor: const Color(0xFF07090E),
         primaryColor: const Color(0xFFE50914),
+        fontFamily: 'sans-serif',
       ),
       home: const SplashScreen(),
     );
   }
 }
 
-// API Service
+// ---------------- API SERVICES ----------------
 class ApiService {
   static const String baseUrl = 'http://cinevorafilms.in/api/index.php';
 
   static Future> getFeed({int userId = 0}) async {
     try {
-      final res = await http.get(Uri.parse('$baseUrl?action=get_feed&user_id=$userId')).timeout(const Duration(seconds: 12));
+      final res = await http
+          .get(Uri.parse('$baseUrl?action=get_feed&user_id=$userId'))
+          .timeout(const Duration(seconds: 12));
       if (res.statusCode == 200) {
         return jsonDecode(res.body);
       }
@@ -48,10 +57,10 @@ class ApiService {
         Uri.parse('$baseUrl?action=login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 10));
       return jsonDecode(res.body);
     } catch (_) {}
-    return {'status': 'error', 'message': 'Connection error'};
+    return {'status': 'error', 'message': 'Server connect nahi hua!'};
   }
 
   static Future> signup(String name, String email, String password) async {
@@ -60,26 +69,26 @@ class ApiService {
         Uri.parse('$baseUrl?action=signup'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'name': name, 'email': email, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 10));
       return jsonDecode(res.body);
     } catch (_) {}
-    return {'status': 'error', 'message': 'Signup error'};
-  }
-
-  static Future<void> trackDownload(int movieId, int userId) async {
-    try {
-      await http.post(
-        Uri.parse('$baseUrl?action=track_download'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'movie_id': movieId, 'user_id': userId}),
-      );
-    } catch (_) {}
+    return {'status': 'error', 'message': 'Signup fail hua!'};
   }
 
   static Future<void> trackWatch(int movieId, int userId) async {
     try {
       await http.post(
         Uri.parse('$baseUrl?action=track_watch'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'movie_id': movieId, 'user_id': userId}),
+      );
+    } catch (_) {}
+  }
+
+  static Future<void> trackDownload(int movieId, int userId) async {
+    try {
+      await http.post(
+        Uri.parse('$baseUrl?action=track_download'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'movie_id': movieId, 'user_id': userId}),
       );
@@ -104,7 +113,7 @@ class ApiService {
   }
 }
 
-// Splash Screen
+// ---------------- SPLASH SCREEN ----------------
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -116,10 +125,10 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _start();
+    _init();
   }
 
-  Future<void> _start() async {
+  Future<void> _init() async {
     await Future.delayed(const Duration(seconds: 2));
     final prefs = await SharedPreferences.getInstance();
     final uid = prefs.getInt('uid') ?? 0;
@@ -139,8 +148,8 @@ class _SplashScreenState extends State<SplashScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text('CINEVORA', style: TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Color(0xFFE50914), letterSpacing: 3)),
-            SizedBox(height: 6),
-            Text('OTT STREAMING PLATFORM', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.grey)),
+            SizedBox(height: 8),
+            Text('ORIGINAL FILMS & WEB SERIES', style: TextStyle(fontSize: 10, letterSpacing: 2, color: Colors.grey)),
           ],
         ),
       ),
@@ -148,7 +157,7 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 }
 
-// Auth Screen
+// ---------------- AUTH SCREEN ----------------
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -167,7 +176,7 @@ class _AuthScreenState extends State<AuthScreen> {
     final email = emailCtrl.text.trim();
     final pass = passCtrl.text.trim();
     if (email.isEmpty || pass.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Email aur password daalein!')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Details poori bharein!')));
       return;
     }
     setState(() => loading = true);
@@ -210,7 +219,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   decoration: InputDecoration(
                     labelText: 'Full Name',
                     filled: true,
-                    fillColor: const Color(0xFF141721),
+                    fillColor: const Color(0xFF121620),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
@@ -222,7 +231,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: InputDecoration(
                   labelText: 'Email Address',
                   filled: true,
-                  fillColor: const Color(0xFF141721),
+                  fillColor: const Color(0xFF121620),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -233,7 +242,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: InputDecoration(
                   labelText: 'Password',
                   filled: true,
-                  fillColor: const Color(0xFF141721),
+                  fillColor: const Color(0xFF121620),
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -247,12 +256,12 @@ class _AuthScreenState extends State<AuthScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: loading ? null : _submit,
-                  child: loading ? const CircularProgressIndicator(color: Colors.white) : Text(isLogin ? 'Sign In' : 'Register Now'),
+                  child: loading ? const CircularProgressIndicator(color: Colors.white) : Text(isLogin ? 'Sign In' : 'Create Account'),
                 ),
               ),
               TextButton(
                 onPressed: () => setState(() => isLogin = !isLogin),
-                child: Text(isLogin ? 'Create a new account' : 'Already have account? Login'),
+                child: Text(isLogin ? 'New user? Register now' : 'Already have account? Login'),
               ),
             ],
           ),
@@ -262,7 +271,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// Bottom Tabs
+// ---------------- MAIN BOTTOM TABS ----------------
 class MainTabsScreen extends StatefulWidget {
   const MainTabsScreen({super.key});
 
@@ -301,7 +310,7 @@ class _MainTabsScreenState extends State<MainTabsScreen> {
   }
 }
 
-// Home Screen
+// ---------------- HOME SCREEN ----------------
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -347,6 +356,17 @@ class _HomeScreenState extends State<HomeScreen> {
         backgroundColor: const Color(0xFF0F121B),
         elevation: 0,
         title: const Text('CINEVORA', style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFE50914), letterSpacing: 2)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
+              if (!context.mounted) return;
+              Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthScreen()));
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _fetch,
@@ -355,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Hero Banner
               if (featured != null)
                 GestureDetector(
                   onTap: () => _openMovie(featured),
@@ -374,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           gradient: LinearGradient(
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
-                            colors: [Colors.transparent, const Color(0xFF090A0F).withOpacity(0.95)],
+                            colors: [Colors.transparent, const Color(0xFF07090E).withOpacity(0.95)],
                           ),
                         ),
                       ),
@@ -398,6 +419,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
+              // Bhojpuri Section
               if (bhojpuri.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
@@ -414,10 +436,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
 
+              // Trending Section
               if (trending.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
-                  child: Text('🎬 Trending Movies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  child: Text('🎬 Trending Movies & Shows', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 SizedBox(
                   height: 190,
@@ -476,7 +499,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// Movie Detail Screen
+// ---------------- MOVIE DETAIL & NATIVE STREAM ----------------
 class MovieDetailScreen extends StatelessWidget {
   final Map<String, dynamic> movie;
   final int userId;
@@ -495,10 +518,10 @@ class MovieDetailScreen extends StatelessWidget {
           children: [
             CachedNetworkImage(
               imageUrl: movie['poster'] ?? '',
-              height: 240,
+              height: 250,
               width: double.infinity,
               fit: BoxFit.cover,
-              errorWidget: (_, __, ___) => Container(height: 240, color: Colors.grey[900]),
+              errorWidget: (_, __, ___) => Container(height: 250, color: Colors.grey[900]),
             ),
             Padding(
               padding: const EdgeInsets.all(16),
@@ -508,7 +531,7 @@ class MovieDetailScreen extends StatelessWidget {
                   Text(movie['title'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 6),
                   Text('${movie['year'] ?? '2026'} • ${movie['duration'] ?? '2h'} • ${movie['category'] ?? 'Cinema'}', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 18),
                   Row(
                     children: [
                       ElevatedButton.icon(
@@ -520,21 +543,21 @@ class MovieDetailScreen extends StatelessWidget {
                           }
                         },
                         icon: const Icon(Icons.play_arrow),
-                        label: const Text('Stream Online'),
+                        label: const Text('Play Stream'),
                       ),
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         onPressed: () {
                           ApiService.trackDownload(mid, userId);
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Download started...')));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Downloading started...')));
                         },
                         icon: const Icon(Icons.download),
                         label: const Text('Download'),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(movie['description'] ?? 'No synopsis available.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                  const SizedBox(height: 18),
+                  Text(movie['description'] ?? 'No storyline details.', style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 ],
               ),
             )
@@ -545,7 +568,7 @@ class MovieDetailScreen extends StatelessWidget {
   }
 }
 
-// Series Screen
+// ---------------- SERIES SCREEN ----------------
 class SeriesScreen extends StatefulWidget {
   const SeriesScreen({super.key});
 
@@ -580,14 +603,14 @@ class _SeriesScreenState extends State<SeriesScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : series.isEmpty
-              ? const Center(child: Text('Abhi koi series add nahi hui.', style: TextStyle(color: Colors.grey)))
+              ? const Center(child: Text('Abhi koi web series add nahi hui.', style: TextStyle(color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: series.length,
                   itemBuilder: (context, i) {
                     final s = series[i];
                     return Card(
-                      color: const Color(0xFF141721),
+                      color: const Color(0xFF121620),
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       child: ListTile(
@@ -605,7 +628,7 @@ class _SeriesScreenState extends State<SeriesScreen> {
   }
 }
 
-// Teasers Screen
+// ---------------- TEASERS SCREEN ----------------
 class TeasersScreen extends StatefulWidget {
   const TeasersScreen({super.key});
 
@@ -640,7 +663,7 @@ class _TeasersScreenState extends State<TeasersScreen> {
       body: loading
           ? const Center(child: CircularProgressIndicator(color: Color(0xFFE50914)))
           : teast.isEmpty
-              ? const Center(child: Text('Koi announcement nahi hai.', style: TextStyle(color: Colors.grey)))
+              ? const Center(child: Text('Koi teaser nahi hai.', style: TextStyle(color: Colors.grey)))
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: teast.length,
@@ -648,7 +671,7 @@ class _TeasersScreenState extends State<TeasersScreen> {
                     final t = teast[i];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(color: const Color(0xFF141721), borderRadius: BorderRadius.circular(14)),
+                      decoration: BoxDecoration(color: const Color(0xFF121620), borderRadius: BorderRadius.circular(14)),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -676,7 +699,7 @@ class _TeasersScreenState extends State<TeasersScreen> {
   }
 }
 
-// VIP Screen
+// ---------------- VIP PASS SCREEN ----------------
 class VipScreen extends StatefulWidget {
   const VipScreen({super.key});
 
@@ -742,7 +765,7 @@ class _VipScreenState extends State<VipScreen> {
                   margin: const EdgeInsets.only(bottom: 16),
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF141721),
+                    color: const Color(0xFF121620),
                     border: Border.all(color: Colors.amber.withOpacity(0.5)),
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -757,7 +780,7 @@ class _VipScreenState extends State<VipScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text('${p['duration_days']} Days • ${p['quality']} • ${p['device_limit']} Screens', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('${p['duration_days']} Days Validity • ${p['quality']} • ${p['device_limit']} Screens', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                       const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
