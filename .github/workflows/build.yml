@@ -1,43 +1,27 @@
-name: Build Android APK
-
+name: Build APK
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
-
+  push:
+    branches: [main]
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
-          cache: false
-
-      - name: Generate Clean Android Scaffolding
-        run: |
-          rm -rf android
-          flutter create --platforms=android --org in.cinevorafilms --project-name cinevora_app .
-          sed -i 's/minSdkVersion = flutter.minSdkVersion/minSdkVersion = 21/g' android/app/build.gradle || true
-          sed -i 's/compileSdkVersion = flutter.compileSdkVersion/compileSdkVersion = 34/g' android/app/build.gradle || true
-          flutter pub get
-
-      - name: Compile Working Android APK
-        run: flutter build apk --debug
-
-      - name: Upload Finished APK
-        uses: actions/upload-artifact@v4
+          channel: stable
+      - run: flutter create --platforms=android --org com.cinevora --project-name films .
+      - run: git checkout -- lib pubspec.yaml
+      - run: sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/><uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/><application#' android/app/src/main/AndroidManifest.xml
+      - run: sed -i 's#android:label="films"#android:label="CineVora Films"#' android/app/src/main/AndroidManifest.xml
+      - run: flutter pub get
+      - run: flutter build apk --release --no-tree-shake-icons
+      - uses: actions/upload-artifact@v4
         with:
-          name: CineVora-App
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: cinevora-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
