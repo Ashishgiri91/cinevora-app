@@ -1,5 +1,5 @@
-name: films
-description: CineVora Films OTT Official App
+name: CineVora OTT
+description: CineVora Films OTT app
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,10 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  http: ^1.2.2
-  shared_preferences: ^2.3.2
-  cached_network_image: ^3.3.1
-  url_launcher: ^6.3.0
 
 flutter:
   uses-material-design: true
